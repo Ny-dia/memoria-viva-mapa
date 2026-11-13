@@ -2,15 +2,6 @@ name: Explorar fuentes (diagnóstico)
 
 on:
   workflow_dispatch:
-    inputs:
-      paginas:
-        description: "URLs de páginas a explorar, separadas por espacios"
-        required: false
-        default: ""
-      archivos:
-        description: "URLs de archivos a descargar e inspeccionar"
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -19,44 +10,43 @@ jobs:
   explorar:
     runs-on: ubuntu-latest
     steps:
-      - name: Listar enlaces en páginas
-        env:
-          PAGINAS: ${{ inputs.paginas }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enlaces del SESNSP con su texto
         run: |
-          for p in $PAGINAS; do
-            echo "=================== $p"
-            curl -sL -A "Mozilla/5.0" "$p" -o pagina.html || { echo "no se pudo descargar"; continue; }
-            grep -oiE 'https?://[^"<> ]+' pagina.html | grep -viE 'facebook|twitter|\.css|\.js|\.png|\.svg|fonts|gob\.mx/(cms/)?(assets|qr)' | sort -u | head -120
-          done
-      - name: Inspeccionar archivos
-        env:
-          ARCHIVOS: ${{ inputs.archivos }}
-        run: |
-          pip install -q openpyxl pandas
-          for u in $ARCHIVOS; do
-            echo "=================== $u"
-            curl -sL -A "Mozilla/5.0" -o f.bin "$u" -D h.txt || true
-            grep -iE '^(content-type|content-disposition)' h.txt | tail -2
-            echo "bytes: $(stat -c%s f.bin)"; file f.bin
-            python3 - <<'PY'
-          import zipfile, pandas as pd, io
-          try:
-              if zipfile.is_zipfile('f.bin'):
-                  z = zipfile.ZipFile('f.bin')
-                  for i in z.infolist()[:40]:
-                      print(f"  {i.filename} ({i.file_size:,})")
-                  for i in z.infolist():
-                      if i.filename.lower().endswith('.csv') and ('mit' in i.filename.lower() or 'pob' in i.filename.lower()):
-                          with z.open(i) as f:
-                              for _ in range(3): print('    ', f.readline().decode('latin-1').strip()[:300])
-                  if any(n.startswith('xl/') for n in z.namelist()):
-                      x = pd.ExcelFile('f.bin')
-                      for s in x.sheet_names[:10]:
-                          df = x.parse(s, header=None, nrows=8)
-                          print('  hoja:', s); print(df.to_string()[:1500])
-              else:
-                  print(open('f.bin','rb').read(600))
-          except Exception as e:
-              print('error', e)
+          pip install -q openpyxl pandas beautifulsoup4
+          curl -sL -A "Mozilla/5.0" https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva -o sesnsp.html
+          python3 - <<'PY'
+          from bs4 import BeautifulSoup
+          s = BeautifulSoup(open('sesnsp.html', encoding='utf-8'), 'html.parser')
+          for a in s.find_all('a', href=True):
+              if 'sharepoint' in a['href']:
+                  prev = a.find_previous(['h2','h3','h4','strong','p','li'])
+                  ctx = (prev.get_text(' ', strip=True)[:140] if prev else '')
+                  print(f"[{a.get_text(' ', strip=True)[:60]}] <- {ctx}\n   {a['href']}")
           PY
-          done
+      - name: Probar descargas de SharePoint
+        run: |
+          grep -oE 'https://sspcgob-my\.sharepoint\.com/[^"<> ]+' sesnsp.html | sed 's/&amp;/\&/g' | sort -u > links.txt
+          while read u; do
+            curl -sL -A "Mozilla/5.0" -o f.bin -D h.txt "${u}&download=1" || true
+            tipo=$(grep -i '^content-type' h.txt | tail -1 | tr -d '\r')
+            disp=$(grep -i '^content-disposition' h.txt | tail -1 | tr -d '\r')
+            echo "== $u"
+            echo "   $tipo | $(stat -c%s f.bin) bytes | $disp"
+            if unzip -l f.bin >/dev/null 2>&1; then unzip -l f.bin | head -8; fi
+          done < links.txt
+      - name: Encabezado de población CONAPO
+        run: |
+          curl -sL -o conapo.zip https://conapo.segob.gob.mx/work/models/CONAPO/pry23/DB/ConDem50a19_ProyPob20a70.zip
+          unzip -o -q conapo.zip 'ConDem50a19_ProyPob20a70/0_Pob_Mitad_1950_2070.xlsx'
+          python3 - <<'PY'
+          import openpyxl
+          wb = openpyxl.load_workbook('ConDem50a19_ProyPob20a70/0_Pob_Mitad_1950_2070.xlsx', read_only=True)
+          for ws in wb.worksheets:
+              print('hoja', ws.title, ws.max_row, ws.max_column)
+              for i, r in enumerate(ws.iter_rows(values_only=True)):
+                  print(r)
+                  if i > 5: break
+          PY
