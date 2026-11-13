@@ -26,7 +26,13 @@ web/       página del mapa
 
 ## Uso
 
-### Capa INEGI (EDR)
+### Publicar el mapa con GitHub Actions (sin instalar nada)
+
+1. Ve a la página de datos abiertos de la EDR del INEGI (https://www.inegi.org.mx/programas/edr/#datos_abiertos), haz clic derecho en el `.zip` de cada año que quieras y elige *Copiar dirección del enlace*.
+2. En este repositorio, abre *Actions → Generar y publicar el mapa → Run workflow*, pega los enlaces separados por espacios y ejecútalo.
+3. Al terminar, el mapa queda publicado en GitHub Pages. Los datos procesados quedan disponibles en `datos/`, dentro del sitio.
+
+### Capa INEGI (EDR), en tu computadora
 
 1. Descarga los `.zip` de datos abiertos por año de registro desde https://www.inegi.org.mx/programas/edr/#datos_abiertos y ponlos en `datos_edr/`. Esta carpeta no se sube al repositorio.
 2. Corre:

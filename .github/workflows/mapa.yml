@@ -1,0 +1,60 @@
+name: Generar y publicar el mapa
+
+# Se corre a mano desde la pestaña "Actions" → "Generar y publicar el mapa" → "Run workflow".
+# Pega los enlaces de descarga de los .zip de datos abiertos de la EDR (INEGI), separados por espacios.
+on:
+  workflow_dispatch:
+    inputs:
+      urls_edr:
+        description: "Enlaces de los .zip de la EDR del INEGI, separados por espacios"
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install pandas folium
+
+      - name: Descargar datos del INEGI
+        env:
+          URLS: ${{ inputs.urls_edr }}
+        run: |
+          mkdir -p datos_edr
+          for url in $URLS; do
+            echo "Descargando $url"
+            curl -fL --retry 3 -A "Mozilla/5.0" -o "datos_edr/$(basename "$url")" "$url"
+          done
+          ls -lh datos_edr
+
+      - name: Procesar y generar el mapa
+        run: python scripts/generar_mapa.py datos_edr --salida web
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
