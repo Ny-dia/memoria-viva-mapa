@@ -16,6 +16,7 @@ USO
 DECISIONES METODOLÓGICAS (documentadas para que sean auditables)
   - Mujer:            sexo == 2
   - Presunto homicidio: presunto == 2  (criterio que usa el INEGI en sus reportes de homicidio).
+                      En las bases recientes la variable se llama tipo_defun; el script acepta ambos nombres.
                       Se reporta además cuántos de esos casos tienen causa CIE-10 X85–Y09 (agresiones)
                       como control de consistencia.
   - Año:              año de OCURRENCIA (anio_ocur), no de registro. Cada archivo anual del INEGI
@@ -39,7 +40,7 @@ import zipfile
 import pandas as pd
 
 COLUMNAS = [
-    "sexo", "presunto", "causa_def", "anio_ocur", "anio_regis", "edad",
+    "sexo", "presunto", "tipo_defun", "causa_def", "anio_ocur", "anio_regis", "edad",
     "ent_ocurr", "mun_ocurr", "ent_ocules", "mun_ocules", "ent_resid", "mun_resid",
 ]
 
@@ -76,7 +77,7 @@ def leer_archivo(ruta):
             for n in csvs:  # el CSV de datos es el que trae las columnas sexo y presunto
                 with z.open(n) as f:
                     encabezado = f.readline().decode("latin-1").lower()
-                if "sexo" in encabezado and "presunto" in encabezado:
+                if "sexo" in encabezado and ("presunto" in encabezado or "tipo_defun" in encabezado):
                     nombre = n
                     break
             if nombre is None:
@@ -95,6 +96,9 @@ def leer_archivo(ruta):
     else:
         df = _leer_csv(ruta)
     df.columns = [c.strip().lower() for c in df.columns]
+    # en las bases recientes del INEGI la variable "presunto" se llama "tipo_defun"
+    if "presunto" not in df.columns and "tipo_defun" in df.columns:
+        df = df.rename(columns={"tipo_defun": "presunto"})
     df["archivo"] = os.path.basename(ruta)
     return df
 
@@ -153,8 +157,10 @@ def procesar(carpeta, lugar="ocurr"):
                   f"columnas encontradas: {sorted(df.columns)}; se omite")
             continue
         n_total = len(df)
+        n_hom = (a_num(df["presunto"]) == 2).sum()
         df = df[(a_num(df["sexo"]) == 2) & (a_num(df["presunto"]) == 2)].copy()
-        print(f"  {os.path.basename(r)}: {n_total:,} defunciones -> {len(df):,} mujeres por presunto homicidio")
+        print(f"  {os.path.basename(r)}: {n_total:,} defunciones registradas; {n_hom:,} presuntos homicidios "
+              f"(ambos sexos, control vs. INEGI); {len(df):,} mujeres por presunto homicidio")
         partes.append(df)
 
     if not partes:
