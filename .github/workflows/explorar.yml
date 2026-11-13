@@ -5,7 +5,12 @@ on:
     inputs:
       paginas:
         description: "URLs de páginas a explorar, separadas por espacios"
-        required: true
+        required: false
+        default: ""
+      archivos:
+        description: "URLs de archivos a descargar e inspeccionar"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -14,14 +19,44 @@ jobs:
   explorar:
     runs-on: ubuntu-latest
     steps:
-      - name: Listar enlaces de descarga
+      - name: Listar enlaces en páginas
         env:
           PAGINAS: ${{ inputs.paginas }}
         run: |
-          for p in $(echo "$PAGINAS" | tr ',;' '  '); do
+          for p in $PAGINAS; do
             echo "=================== $p"
             curl -sL -A "Mozilla/5.0" "$p" -o pagina.html || { echo "no se pudo descargar"; continue; }
-            echo "bytes: $(stat -c%s pagina.html)"
-            grep -oiE 'href="[^"]+"' pagina.html | sed 's/href=//I; s/"//g' \
-              | grep -iE 'csv|zip|xls|drive\.google|datos|victim|vctim|pob|proyecc|descarg' | sort -u | head -150
+            grep -oiE 'https?://[^"<> ]+' pagina.html | grep -viE 'facebook|twitter|\.css|\.js|\.png|\.svg|fonts|gob\.mx/(cms/)?(assets|qr)' | sort -u | head -120
+          done
+      - name: Inspeccionar archivos
+        env:
+          ARCHIVOS: ${{ inputs.archivos }}
+        run: |
+          pip install -q openpyxl pandas
+          for u in $ARCHIVOS; do
+            echo "=================== $u"
+            curl -sL -A "Mozilla/5.0" -o f.bin "$u" -D h.txt || true
+            grep -iE '^(content-type|content-disposition)' h.txt | tail -2
+            echo "bytes: $(stat -c%s f.bin)"; file f.bin
+            python3 - <<'PY'
+          import zipfile, pandas as pd, io
+          try:
+              if zipfile.is_zipfile('f.bin'):
+                  z = zipfile.ZipFile('f.bin')
+                  for i in z.infolist()[:40]:
+                      print(f"  {i.filename} ({i.file_size:,})")
+                  for i in z.infolist():
+                      if i.filename.lower().endswith('.csv') and ('mit' in i.filename.lower() or 'pob' in i.filename.lower()):
+                          with z.open(i) as f:
+                              for _ in range(3): print('    ', f.readline().decode('latin-1').strip()[:300])
+                  if any(n.startswith('xl/') for n in z.namelist()):
+                      x = pd.ExcelFile('f.bin')
+                      for s in x.sheet_names[:10]:
+                          df = x.parse(s, header=None, nrows=8)
+                          print('  hoja:', s); print(df.to_string()[:1500])
+              else:
+                  print(open('f.bin','rb').read(600))
+          except Exception as e:
+              print('error', e)
+          PY
           done
