@@ -1,0 +1,15 @@
+# Datos crudos (se descargan, no se versionan)
+datos_edr/
+datos_sesnsp/
+*.zip
+
+# Claves y entorno
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Sistema
+.DS_Store
