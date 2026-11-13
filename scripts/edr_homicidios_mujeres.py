@@ -81,10 +81,14 @@ def leer_archivo(ruta):
                     break
             if nombre is None:
                 print(f"  Contenido de {os.path.basename(ruta)}:")
-                for n in csvs[:15]:
+                for i, n in enumerate(csvs[:15]):
                     with z.open(n) as f:
-                        enc = f.readline().decode("latin-1").strip()[:150]
-                    print(f"    {n} ({z.getinfo(n).file_size:,} bytes) -> {enc}")
+                        enc = f.readline().decode("latin-1").strip()
+                        fila = f.readline().decode("latin-1").strip()
+                    if i == 0:
+                        print(f"    {n} ({z.getinfo(n).file_size:,} bytes)\n      encabezado: {enc!r}\n      primera fila: {fila!r}")
+                    else:
+                        print(f"    {n} ({z.getinfo(n).file_size:,} bytes) -> {enc[:80]}")
                 raise ValueError(f"No encontré el CSV con las columnas sexo/presunto dentro de {ruta}")
             print(f"  {os.path.basename(ruta)}: usando {nombre}")
             df = _leer_csv(io.BytesIO(z.read(nombre)))
