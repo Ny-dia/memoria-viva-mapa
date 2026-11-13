@@ -1,12 +1,13 @@
 """
-Genera el mapa por estado (HTML) a partir de los .zip de la EDR del INEGI.
+Prepara los datos del mapa de tres capas (por estado).
 
-  python scripts/generar_mapa.py datos_edr --salida web
+  python scripts/generar_mapa.py --edr datos_edr [--sesnsp datos_sesnsp/x.zip] [--conapo datos_conapo/x.zip] --salida web
 
-Produce:
-  web/index.html                              mapa interactivo (selector de año)
-  web/datos/homicidios_mujeres_estado_anio.csv
-  web/datos/homicidios_mujeres_municipio_anio.csv
+Escribe en web/datos/:
+  estados.json                           datos que lee la página (web/index.html)
+  estados.geojson                        límites estatales
+  tres_capas_estado_anio.csv             tabla descargable con las tres capas
+  homicidios_mujeres_municipio_anio.csv  capa INEGI a nivel municipal
 """
 import argparse
 import json
@@ -14,89 +15,79 @@ import os
 import sys
 import urllib.request
 
-import branca.colormap as cm
-import folium
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 import edr_homicidios_mujeres as edr  # noqa: E402
+import fuentes_complementarias as fc  # noqa: E402
 
 URL_ESTADOS = "https://raw.githubusercontent.com/strotgen/mexico-leaflet/master/states.geojson"
 NOMBRES = {9: "Ciudad de México", 5: "Coahuila", 16: "Michoacán", 30: "Veracruz"}
-MIN_CASOS_ANIO_COMPLETO = 500  # años con menos casos a nivel nacional = solo registros tardíos
-
-
-def construir_mapa(est, anios):
-    geo = json.load(urllib.request.urlopen(URL_ESTADOS))
-    for ft in geo["features"]:
-        p = ft["properties"]
-        p["nombre"] = NOMBRES.get(p["state_code"], p["state_name"])
-        p["cve"] = str(p["state_code"]).zfill(2)
-
-    vmax = est[est["anio"].isin(anios)]["homicidios_mujeres"].max()
-    escala = cm.LinearColormap(["#fbe9e7", "#e57373", "#b71c1c", "#4a0000"], vmin=0, vmax=vmax,
-                               caption="Mujeres muertas por presunto homicidio (INEGI, EDR)")
-
-    m = folium.Map(location=[23.6, -102.5], zoom_start=5, tiles=None, control_scale=True)
-    folium.TileLayer("OpenStreetMap", control=False, opacity=0.5).add_to(m)
-
-    for i, anio in enumerate(anios):
-        t = est[est["anio"] == anio].set_index("cve_ent")
-        capa = json.loads(json.dumps(geo))
-        for ft in capa["features"]:
-            p = ft["properties"]
-            fila = t.loc[p["cve"]] if p["cve"] in t.index else None
-            for col, nombre in [("homicidios_mujeres", "homicidios"), ("arma_fuego", "arma_fuego"),
-                                ("menores_18", "menores_18")]:
-                p[nombre] = int(fila[col]) if fila is not None else 0
-        folium.GeoJson(
-            capa, name=str(anio), overlay=False, show=(i == len(anios) - 1),
-            style_function=lambda f: {"fillColor": escala(f["properties"]["homicidios"]),
-                                      "color": "#555", "weight": 0.6, "fillOpacity": 0.85},
-            highlight_function=lambda f: {"weight": 2, "color": "#000"},
-            tooltip=folium.GeoJsonTooltip(
-                fields=["nombre", "homicidios", "arma_fuego", "menores_18"],
-                aliases=["Estado", "Mujeres asesinadas (INEGI)", "Con arma de fuego", "Menores de 18"],
-                localize=True),
-        ).add_to(m)
-
-    escala.add_to(m)
-    folium.LayerControl(collapsed=False).add_to(m)
-    titulo = """<div style="position:fixed;top:12px;left:60px;z-index:9999;background:white;padding:8px 14px;
-    border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-family:sans-serif;max-width:420px">
-    <b>Memoria Viva de Feminicidios</b><br>
-    <span style="font-size:12px">Mujeres muertas por presunto homicidio, por estado de ocurrencia.
-    Fuente: INEGI, Estadísticas de Defunciones Registradas. No es un conteo de feminicidios.
-    Elige el año en el control de la derecha.
-    <a href="datos/homicidios_mujeres_estado_anio.csv">Descargar datos</a></span></div>"""
-    m.get_root().html.add_child(folium.Element(titulo))
-    return m
+MIN_CASOS_ANIO_COMPLETO = 500
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("carpeta", help="Carpeta con los .zip de la EDR")
+    p.add_argument("--edr", required=True, help="Carpeta con los .zip de la EDR (INEGI)")
+    p.add_argument("--sesnsp", help=".zip de víctimas del fuero común estatal 2015-2025 (SESNSP)")
+    p.add_argument("--conapo", help=".zip de la Conciliación demográfica y proyecciones (CONAPO)")
     p.add_argument("--salida", default="web")
     a = p.parse_args()
+    out = os.path.join(a.salida, "datos")
+    os.makedirs(out, exist_ok=True)
 
-    datos, sin_anio = edr.procesar(a.carpeta, lugar="ocurr")
+    print("== INEGI (EDR)")
+    datos, sin_anio = edr.procesar(a.edr, lugar="ocurr")
     nacional = datos.groupby("anio").size()
-    print("\nMujeres por presunto homicidio, por año de ocurrencia (nacional):")
     print(nacional.to_string())
-    print(f"Año de ocurrencia no especificado (excluidos): {sin_anio}")
-
-    mun = edr.agregar(datos, "municipio")
-    est = edr.agregar(datos, "estado")
-    est = est[est["cve_ent"] != "NO_ESPECIFICADO"]
-
     anios = sorted(int(x) for x in nacional.index if nacional[x] >= MIN_CASOS_ANIO_COMPLETO)
-    print("Años en el mapa:", anios)
+    edr.agregar(datos, "municipio").to_csv(os.path.join(out, "homicidios_mujeres_municipio_anio.csv"), index=False)
+    tabla = edr.agregar(datos, "estado")
+    tabla = tabla[(tabla["cve_ent"] != "NO_ESPECIFICADO") & tabla["anio"].isin(anios)].copy()
+    tabla["anio"] = tabla["anio"].astype(int)
 
-    os.makedirs(os.path.join(a.salida, "datos"), exist_ok=True)
-    est.to_csv(os.path.join(a.salida, "datos", "homicidios_mujeres_estado_anio.csv"), index=False)
-    mun.to_csv(os.path.join(a.salida, "datos", "homicidios_mujeres_municipio_anio.csv"), index=False)
-    construir_mapa(est, anios).save(os.path.join(a.salida, "index.html"))
-    print(f"Mapa guardado en {a.salida}/index.html")
+    fuentes = {"inegi": True, "sesnsp": False, "conapo": False}
+    if a.sesnsp:
+        print("== SESNSP")
+        fem = fc.sesnsp_feminicidio(a.sesnsp)
+        tabla = tabla.merge(fem, on=["cve_ent", "anio"], how="left")
+        fuentes["sesnsp"] = bool(tabla["feminicidios_sesnsp"].notna().any())
+    if a.conapo:
+        print("== CONAPO")
+        pob = fc.conapo_mujeres(a.conapo)
+        tabla = tabla.merge(pob, on=["cve_ent", "anio"], how="left")
+        fuentes["conapo"] = bool(tabla["mujeres_conapo"].notna().any())
+
+    tabla.to_csv(os.path.join(out, "tres_capas_estado_anio.csv"), index=False)
+
+    geo = json.load(urllib.request.urlopen(URL_ESTADOS))
+    for ft in geo["features"]:
+        pr = ft["properties"]
+        ft["properties"] = {"cve": str(pr["state_code"]).zfill(2),
+                            "nombre": NOMBRES.get(pr["state_code"], pr["state_name"])}
+    with open(os.path.join(out, "estados.geojson"), "w", encoding="utf-8") as f:
+        json.dump(geo, f, ensure_ascii=False)
+
+    def entero(r, col):
+        return int(r[col]) if col in r and pd.notna(r[col]) else None
+
+    estados = {}
+    for _, r in tabla.iterrows():
+        estados.setdefault(r["cve_ent"], {})[str(int(r["anio"]))] = {
+            "inegi": int(r["homicidios_mujeres"]),
+            "arma_fuego": int(r["arma_fuego"]),
+            "menores_18": int(r["menores_18"]),
+            "sesnsp": entero(r, "feminicidios_sesnsp"),
+            "mujeres": entero(r, "mujeres_conapo"),
+        }
+    salida = {"anios": anios, "anio_preliminar": max(anios), "fuentes": fuentes, "estados": estados}
+    with open(os.path.join(out, "estados.json"), "w", encoding="utf-8") as f:
+        json.dump(salida, f, ensure_ascii=False)
+
+    cols = [c for c in ["homicidios_mujeres", "feminicidios_sesnsp", "mujeres_conapo"] if c in tabla]
+    print("\nResumen nacional:")
+    print(tabla.groupby("anio")[cols].sum().to_string())
+    print(f"\nListo: {out}/estados.json  (fuentes: {fuentes})")
 
 
 if __name__ == "__main__":

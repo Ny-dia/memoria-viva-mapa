@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memoria Viva de Feminicidios — Mapa</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --tinta:#1f1f1f; --gris:#5f5e5a; --linea:#d3d1c7; --fondo:#faf9f6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--tinta); background:var(--fondo); }
+  header { padding:16px 20px 8px; }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
+  .sub { font-size:14px; color:var(--gris); margin:0; max-width:820px; line-height:1.5; }
+  .controles { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 20px 12px; }
+  .capa { font:inherit; font-size:14px; padding:8px 12px; border:1px solid var(--linea); background:#fff; border-radius:8px; cursor:pointer; }
+  .capa[aria-pressed="true"] { border-color:var(--tinta); background:var(--tinta); color:#fff; }
+  .capa:disabled { opacity:.45; cursor:not-allowed; }
+  select { font:inherit; font-size:14px; padding:7px 10px; border:1px solid var(--linea); border-radius:8px; background:#fff; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:0; height:calc(100vh - 150px); min-height:520px; }
+  #mapa { height:100%; background:#eceae4; }
+  aside { border-left:1px solid var(--linea); background:#fff; padding:16px 18px; overflow:auto; font-size:14px; line-height:1.55; }
+  aside h2 { font-size:16px; margin:0 0 6px; }
+  .desc { color:var(--gris); margin:0 0 14px; }
+  .ficha { border-top:1px solid var(--linea); padding-top:12px; margin-top:12px; }
+  .ficha h3 { font-size:15px; margin:0 0 8px; }
+  .fila { display:flex; justify-content:space-between; gap:12px; padding:3px 0; }
+  .fila span:first-child { color:var(--gris); }
+  .leyenda { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--gris); margin:8px 0 4px; flex-wrap:wrap; }
+  .leyenda i { display:inline-block; width:28px; height:12px; }
+  .nota { font-size:12.5px; color:var(--gris); border-top:1px solid var(--linea); margin-top:16px; padding-top:12px; }
+  .nota p { margin:0 0 8px; }
+  .aviso { background:#faeeda; color:#633806; border-radius:8px; padding:8px 10px; font-size:12.5px; margin:10px 0; }
+  a { color:#185fa5; }
+  @media (max-width: 820px) { main { grid-template-columns:1fr; height:auto; } #mapa { height:62vh; } aside { border-left:0; border-top:1px solid var(--linea); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Memoria Viva de Feminicidios</h1>
+  <p class="sub">Lo que el Estado registra como feminicidio frente al total de mujeres asesinadas en México, por estado.</p>
+</header>
+
+<div class="controles" role="group" aria-label="Capas del mapa">
+  <button class="capa" data-capa="sesnsp" aria-pressed="false">1 · Feminicidio oficial (SESNSP)</button>
+  <button class="capa" data-capa="inegi" aria-pressed="true">2 · Mujeres asesinadas (INEGI)</button>
+  <button class="capa" data-capa="brecha" aria-pressed="false">3 · Brecha</button>
+  <label style="margin-left:8px;font-size:14px;color:var(--gris)">Año
+    <select id="anio" aria-label="Año"></select>
+  </label>
+</div>
+
+<main>
+  <div id="mapa" aria-label="Mapa de México por estado"></div>
+  <aside>
+    <h2 id="titulo-capa"></h2>
+    <p class="desc" id="desc-capa"></p>
+    <div class="leyenda" id="leyenda"></div>
+    <div id="aviso"></div>
+    <div class="ficha" id="ficha"><p class="desc">Pasa el cursor o toca un estado para ver sus datos.</p></div>
+    <div class="nota">
+      <p><b>Fuentes.</b> INEGI, Estadísticas de Defunciones Registradas (mujeres por presunto homicidio, por estado y año de ocurrencia). SESNSP, víctimas de feminicidio del fuero común, metodología 2015–2025. CONAPO, población de mujeres a mitad de año.</p>
+      <p><b>Cómo leer la brecha.</b> Es el porcentaje de mujeres asesinadas (INEGI) que el Estado registró como víctimas de feminicidio (SESNSP). No prueba que el resto hayan sido feminicidios: muestra cuántas muertes nunca se investigaron como tales.</p>
+      <p><b>Cuidado al comparar.</b> El INEGI ubica cada caso por lugar y año de la muerte; el SESNSP, por la fiscalía y la fecha en que se abrió la carpeta. Las fuentes se comparan, no se suman.</p>
+      <p><a href="datos/tres_capas_estado_anio.csv">Descargar los datos (CSV)</a> · <a href="https://github.com/Ny-dia/memoria-viva-mapa">Código y método</a></p>
+    </div>
+  </aside>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const CAPAS = {
+  sesnsp: { titulo: "Feminicidio oficial", rampa: ["#faece7","#f5c4b3","#f0997b","#d85a30","#712b13"],
+            desc: "Víctimas que las fiscalías clasificaron como feminicidio. Fuente: SESNSP." },
+  inegi:  { titulo: "Mujeres asesinadas", rampa: ["#fcebeb","#f7c1c1","#f09595","#e24b4a","#791f1f"],
+            desc: "Mujeres muertas por presunto homicidio según el certificado de defunción, antes de cualquier investigación. Fuente: INEGI." },
+  brecha: { titulo: "Brecha: ¿cuántas se registraron como feminicidio?", rampa: ["#eeedfe","#cecbf6","#afa9ec","#7f77dd","#3c3489"],
+            desc: "Porcentaje de mujeres asesinadas que quedó registrado como feminicidio. Más oscuro = menor registro." }
+};
+const fmt = n => n == null ? "—" : Math.round(n).toLocaleString("es-MX");
+const fmt1 = n => n == null || !isFinite(n) ? "—" : n.toLocaleString("es-MX", {maximumFractionDigits: 1, minimumFractionDigits: 1});
+
+let D, geo, capa = "inegi", anio, capaGeo, fijo = null;
+const mapa = L.map("mapa", { zoomSnap: 0.25, attributionControl: true }).setView([23.8, -102], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { attribution: "&copy; OpenStreetMap", opacity: 0.35, maxZoom: 9 }).addTo(mapa);
+
+function datos(cve, a) { return (D.estados[cve] || {})[a] || null; }
+function tasa(n, pob) { return n == null || !pob ? null : n / pob * 1e5; }
+function valor(cve, a, c) {
+  const d = datos(cve, a); if (!d) return null;
+  const porTasa = D.fuentes.conapo;
+  if (c === "inegi") return porTasa ? tasa(d.inegi, d.mujeres) : d.inegi;
+  if (c === "sesnsp") return porTasa ? tasa(d.sesnsp, d.mujeres) : d.sesnsp;
+  if (c === "brecha") return d.sesnsp == null || !d.inegi ? null : d.sesnsp / d.inegi * 100;
+}
+function cortes(c) {
+  const v = [];
+  for (const cve in D.estados) for (const a of D.anios) { const x = valor(cve, a, c); if (x != null) v.push(x); }
+  v.sort((x, y) => x - y);
+  return [0.2, 0.4, 0.6, 0.8].map(q => v[Math.floor(q * (v.length - 1))]);
+}
+let CORTES = {};
+function color(c, x) {
+  if (x == null) return "#d3d1c7";
+  const k = CORTES[c]; let i = 0; while (i < k.length && x > k[i]) i++;
+  const r = CAPAS[c].rampa;
+  return c === "brecha" ? r[r.length - 1 - i] : r[i];
+}
+function unidad(c) {
+  if (c === "brecha") return "% registrado como feminicidio";
+  return D.fuentes.conapo ? "por 100 mil mujeres" : "casos";
+}
+function leyenda() {
+  const k = CORTES[capa], r = CAPAS[capa].rampa;
+  const fx = capa === "brecha" || D.fuentes.conapo ? fmt1 : fmt;
+  const col = capa === "brecha" ? [...r].reverse() : r;
+  document.getElementById("leyenda").innerHTML =
+    `<span style="width:100%">${unidad(capa)}</span><span>${fx(k[0])}</span>` +
+    col.map(c => `<i style="background:${c}"></i>`).join("") + `<span>${fx(k[k.length - 1])}</span>`;
+}
+function ficha(cve, nombre) {
+  const d = datos(cve, anio);
+  if (!d) { document.getElementById("ficha").innerHTML = `<h3>${nombre}</h3><p class="desc">Sin datos para ${anio}.</p>`; return; }
+  const filas = [
+    ["Mujeres asesinadas (INEGI)", fmt(d.inegi)],
+    ["Feminicidios (SESNSP)", fmt(d.sesnsp)],
+    ["No registradas como feminicidio", d.sesnsp == null ? "—" : fmt(Math.max(d.inegi - d.sesnsp, 0))],
+    ["% registrado como feminicidio", fmt1(valor(cve, anio, "brecha")) + (d.sesnsp == null ? "" : " %")],
+  ];
+  if (D.fuentes.conapo) {
+    filas.push(["Tasa INEGI por 100 mil mujeres", fmt1(tasa(d.inegi, d.mujeres))]);
+    filas.push(["Tasa SESNSP por 100 mil mujeres", fmt1(tasa(d.sesnsp, d.mujeres))]);
+  }
+  filas.push(["Con arma de fuego (INEGI)", fmt(d.arma_fuego)], ["Menores de 18 (INEGI)", fmt(d.menores_18)]);
+  document.getElementById("ficha").innerHTML = `<h3>${nombre} · ${anio}</h3>` +
+    filas.map(([a, b]) => `<div class="fila"><span>${a}</span><span>${b}</span></div>`).join("");
+}
+function avisos() {
+  let h = "";
+  if (anio == D.anio_preliminar) h += `<div class="aviso">${anio}: las cifras del INEGI aún están incompletas, porque algunas muertes de ese año se registran después. La brecha puede verse más chica de lo que es.</div>`;
+  if (!D.fuentes.sesnsp && capa !== "inegi") h += `<div class="aviso">Falta cargar los datos del SESNSP.</div>`;
+  if (D.anios_sin_sesnsp && D.anios_sin_sesnsp.includes(+anio) && capa !== "inegi") h += `<div class="aviso">No hay datos del SESNSP comparables para ${anio}.</div>`;
+  document.getElementById("aviso").innerHTML = h;
+}
+function pintar() {
+  document.getElementById("titulo-capa").textContent = CAPAS[capa].titulo;
+  document.getElementById("desc-capa").textContent = CAPAS[capa].desc;
+  document.querySelectorAll(".capa").forEach(b => b.setAttribute("aria-pressed", b.dataset.capa === capa));
+  capaGeo.setStyle(f => ({ fillColor: color(capa, valor(f.properties.cve, anio, capa)),
+                           fillOpacity: .9, color: "#fff", weight: 1 }));
+  leyenda(); avisos();
+  if (fijo) ficha(fijo.cve, fijo.nombre);
+}
+Promise.all([fetch("datos/estados.json").then(r => r.json()), fetch("datos/estados.geojson").then(r => r.json())])
+.then(([d, g]) => {
+  D = d; geo = g;
+  D.anios_sin_sesnsp = D.anios.filter(a => !Object.values(D.estados).some(e => e[a] && e[a].sesnsp != null));
+  for (const c in CAPAS) CORTES[c] = cortes(c);
+  if (!D.fuentes.sesnsp) document.querySelectorAll('.capa[data-capa="sesnsp"], .capa[data-capa="brecha"]').forEach(b => b.disabled = true);
+  const sel = document.getElementById("anio");
+  sel.innerHTML = D.anios.map(a => `<option value="${a}">${a}${a == D.anio_preliminar ? " (preliminar)" : ""}</option>`).join("");
+  const completos = D.anios.filter(a => a != D.anio_preliminar && !D.anios_sin_sesnsp.includes(a));
+  anio = String(completos.length ? completos[completos.length - 1] : D.anios[D.anios.length - 1]);
+  sel.value = anio;
+  sel.onchange = () => { anio = sel.value; pintar(); };
+  document.querySelectorAll(".capa").forEach(b => b.onclick = () => { capa = b.dataset.capa; pintar(); });
+  capaGeo = L.geoJSON(geo, { onEachFeature: (f, l) => {
+    const p = f.properties;
+    l.on("mouseover", () => { l.setStyle({ weight: 2.5, color: "#1f1f1f" }); l.bringToFront(); if (!fijo) ficha(p.cve, p.nombre); });
+    l.on("mouseout", () => { l.setStyle({ weight: 1, color: "#fff" }); });
+    l.on("click", () => { fijo = { cve: p.cve, nombre: p.nombre }; ficha(p.cve, p.nombre); });
+  }}).addTo(mapa);
+  mapa.fitBounds(capaGeo.getBounds(), { padding: [10, 10] });
+  pintar();
+});
+</script>
+</body>
+</html>
