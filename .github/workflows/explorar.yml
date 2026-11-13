@@ -10,43 +10,22 @@ jobs:
   explorar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Enlaces del SESNSP con su texto
+      - name: Descargar víctimas SESNSP (SharePoint con cookies)
         run: |
-          pip install -q openpyxl pandas beautifulsoup4
-          curl -sL -A "Mozilla/5.0" https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva -o sesnsp.html
-          python3 - <<'PY'
-          from bs4 import BeautifulSoup
-          s = BeautifulSoup(open('sesnsp.html', encoding='utf-8'), 'html.parser')
-          for a in s.find_all('a', href=True):
-              if 'sharepoint' in a['href']:
-                  prev = a.find_previous(['h2','h3','h4','strong','p','li'])
-                  ctx = (prev.get_text(' ', strip=True)[:140] if prev else '')
-                  print(f"[{a.get_text(' ', strip=True)[:60]}] <- {ctx}\n   {a['href']}")
-          PY
-      - name: Probar descargas de SharePoint
-        run: |
-          grep -oE 'https://sspcgob-my\.sharepoint\.com/[^"<> ]+' sesnsp.html | sed 's/&amp;/\&/g' | sort -u > links.txt
-          while read u; do
-            curl -sL -A "Mozilla/5.0" -o f.bin -D h.txt "${u}&download=1" || true
-            tipo=$(grep -i '^content-type' h.txt | tail -1 | tr -d '\r')
-            disp=$(grep -i '^content-disposition' h.txt | tail -1 | tr -d '\r')
-            echo "== $u"
-            echo "   $tipo | $(stat -c%s f.bin) bytes | $disp"
-            if unzip -l f.bin >/dev/null 2>&1; then unzip -l f.bin | head -8; fi
-          done < links.txt
-      - name: Encabezado de población CONAPO
-        run: |
-          curl -sL -o conapo.zip https://conapo.segob.gob.mx/work/models/CONAPO/pry23/DB/ConDem50a19_ProyPob20a70.zip
-          unzip -o -q conapo.zip 'ConDem50a19_ProyPob20a70/0_Pob_Mitad_1950_2070.xlsx'
-          python3 - <<'PY'
-          import openpyxl
-          wb = openpyxl.load_workbook('ConDem50a19_ProyPob20a70/0_Pob_Mitad_1950_2070.xlsx', read_only=True)
-          for ws in wb.worksheets:
-              print('hoja', ws.title, ws.max_row, ws.max_column)
-              for i, r in enumerate(ws.iter_rows(values_only=True)):
-                  print(r)
-                  if i > 5: break
-          PY
+          U='https://sspcgob-my.sharepoint.com/:u:/g/personal/cni_sspc_gob_mx/IQC7gjMDceDhTovbaLjJhCsPATp0-Oa3jyDBxpZ8qZm7Nkw?e=cNhRp0'
+          for intento in a b c; do
+            rm -f c.txt f.bin
+            case $intento in
+              a) curl -sL -A "Mozilla/5.0" -c c.txt -b c.txt "$U" -o /dev/null
+                 curl -sL -A "Mozilla/5.0" -c c.txt -b c.txt -D h.txt "${U}&download=1" -o f.bin ;;
+              b) curl -sL -A "Mozilla/5.0" -c c.txt -b c.txt -D h0.txt "$U" -o p.html
+                 FIN=$(grep -i '^location' h0.txt | tail -1 | tr -d '\r' | cut -d' ' -f2)
+                 echo "redirige a: $FIN"
+                 ID=$(echo "$FIN" | grep -oE 'id=[^&]+' | head -1 | cut -d= -f2)
+                 echo "id: $ID"
+                 curl -sL -A "Mozilla/5.0" -c c.txt -b c.txt -D h.txt "https://sspcgob-my.sharepoint.com/personal/cni_sspc_gob_mx/_layouts/15/download.aspx?SourceUrl=$ID" -o f.bin ;;
+              c) curl -sL -A "Mozilla/5.0" -D h.txt "$(echo "$U" | sed 's/?e=.*$//')?download=1" -o f.bin ;;
+            esac
+            echo "== intento $intento: $(grep -i '^content-type' h.txt | tail -1 | tr -d '\r') | $(stat -c%s f.bin) bytes"
+            if unzip -l f.bin >/dev/null 2>&1; then unzip -l f.bin | head -6; break; fi
+          done
