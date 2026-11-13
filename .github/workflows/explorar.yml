@@ -1,0 +1,27 @@
+name: Explorar fuentes (diagnóstico)
+
+on:
+  workflow_dispatch:
+    inputs:
+      paginas:
+        description: "URLs de páginas a explorar, separadas por espacios"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  explorar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Listar enlaces de descarga
+        env:
+          PAGINAS: ${{ inputs.paginas }}
+        run: |
+          for p in $(echo "$PAGINAS" | tr ',;' '  '); do
+            echo "=================== $p"
+            curl -sL -A "Mozilla/5.0" "$p" -o pagina.html || { echo "no se pudo descargar"; continue; }
+            echo "bytes: $(stat -c%s pagina.html)"
+            grep -oiE 'href="[^"]+"' pagina.html | sed 's/href=//I; s/"//g' \
+              | grep -iE 'csv|zip|xls|drive\.google|datos|victim|vctim|pob|proyecc|descarg' | sort -u | head -150
+          done
