@@ -66,16 +66,27 @@ def _leer_csv(fuente):
 def leer_archivo(ruta):
     """Acepta .csv o .zip de datos abiertos del INEGI (busca dentro el CSV de defunciones)."""
     if ruta.lower().endswith(".zip"):
+        if not zipfile.is_zipfile(ruta):
+            raise ValueError(f"{os.path.basename(ruta)} no es un .zip válido "
+                             f"({os.path.getsize(ruta):,} bytes): revisa el enlace de descarga")
         with zipfile.ZipFile(ruta) as z:
-            csvs = [n for n in z.namelist()
-                    if n.lower().endswith(".csv") and "defun" in os.path.basename(n).lower()]
-            if not csvs:  # algunos zips nombran distinto el archivo
-                csvs = [n for n in z.namelist()
-                        if n.lower().endswith(".csv") and "conjunto_de_datos" in n.lower()]
-            if not csvs:
-                raise ValueError(f"No encontré el CSV de defunciones dentro de {ruta}")
-            # el más grande es la base; los demás suelen ser catálogos
-            nombre = max(csvs, key=lambda n: z.getinfo(n).file_size)
+            csvs = sorted((n for n in z.namelist() if n.lower().endswith(".csv")),
+                          key=lambda n: z.getinfo(n).file_size, reverse=True)
+            nombre = None
+            for n in csvs:  # el CSV de datos es el que trae las columnas sexo y presunto
+                with z.open(n) as f:
+                    encabezado = f.readline().decode("latin-1").lower()
+                if "sexo" in encabezado and "presunto" in encabezado:
+                    nombre = n
+                    break
+            if nombre is None:
+                print(f"  Contenido de {os.path.basename(ruta)}:")
+                for n in csvs[:15]:
+                    with z.open(n) as f:
+                        enc = f.readline().decode("latin-1").strip()[:150]
+                    print(f"    {n} ({z.getinfo(n).file_size:,} bytes) -> {enc}")
+                raise ValueError(f"No encontré el CSV con las columnas sexo/presunto dentro de {ruta}")
+            print(f"  {os.path.basename(ruta)}: usando {nombre}")
             df = _leer_csv(io.BytesIO(z.read(nombre)))
     else:
         df = _leer_csv(ruta)
@@ -127,16 +138,23 @@ def procesar(carpeta, lugar="ocurr"):
 
     partes = []
     for r in rutas:
-        df = leer_archivo(r)
+        try:
+            df = leer_archivo(r)
+        except ValueError as e:
+            print(f"  ! {e}; se omite")
+            continue
         faltan = {"sexo", "presunto", "anio_ocur", f"ent_{lugar}", f"mun_{lugar}"} - set(df.columns)
         if faltan:
-            print(f"  ! {os.path.basename(r)}: faltan columnas {sorted(faltan)}; se omite")
+            print(f"  ! {os.path.basename(r)}: faltan columnas {sorted(faltan)}; "
+                  f"columnas encontradas: {sorted(df.columns)}; se omite")
             continue
         n_total = len(df)
         df = df[(a_num(df["sexo"]) == 2) & (a_num(df["presunto"]) == 2)].copy()
         print(f"  {os.path.basename(r)}: {n_total:,} defunciones -> {len(df):,} mujeres por presunto homicidio")
         partes.append(df)
 
+    if not partes:
+        raise SystemExit("Ningún archivo se pudo procesar. Revisa los mensajes de arriba.")
     datos = pd.concat(partes, ignore_index=True)
     datos["anio"] = a_num(datos["anio_ocur"]).astype("Int64")
     datos["cvegeo"], datos["cve_ent"] = cvegeo(datos[f"ent_{lugar}"], datos[f"mun_{lugar}"])

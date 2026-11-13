@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       urls_edr:
-        description: "Enlaces de los .zip de la EDR del INEGI, separados por espacios"
+        description: "Enlaces de los .zip de la EDR del INEGI (separados por espacios o comas)"
         required: true
 
 permissions:
@@ -22,9 +22,9 @@ jobs:
   construir:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -36,9 +36,15 @@ jobs:
           URLS: ${{ inputs.urls_edr }}
         run: |
           mkdir -p datos_edr
-          for url in $URLS; do
+          # acepta enlaces separados por espacios, comas o saltos de línea
+          for url in $(echo "$URLS" | tr ',;' '  '); do
+            archivo="datos_edr/$(basename "$url")"
             echo "Descargando $url"
-            curl -fL --retry 3 -A "Mozilla/5.0" -o "datos_edr/$(basename "$url")" "$url"
+            curl -fL --retry 3 -A "Mozilla/5.0" -o "$archivo" "$url"
+            if ! unzip -tq "$archivo" > /dev/null 2>&1; then
+              echo "::warning::$url no descargó un .zip válido ($(stat -c%s "$archivo") bytes). Revisa el enlace."
+              rm -f "$archivo"
+            fi
           done
           ls -lh datos_edr
 
