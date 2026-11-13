@@ -8,9 +8,10 @@ Proyecto de investigación independiente de Nydia Mejía Zavala.
 
 | Capa | Fuente | Qué cuenta | Unidad | Periodicidad | Nivel |
 |---|---|---|---|---|---|
-| Feminicidio oficial | SESNSP, incidencia delictiva | Delitos clasificados como feminicidio por las fiscalías | Delitos (2015–2025); víctimas por municipio desde 2026, por confirmar | Mensual | Municipal |
-| Muertes violentas de mujeres | INEGI, Estadísticas de Defunciones Registradas (EDR) | Mujeres muertas por presunto homicidio según el certificado de defunción | Personas | Anual | Municipal |
-| Casos documentados | Memoria Viva de Feminicidios | Casos individuales clasificados con una rúbrica explícita | Personas | Continua | Punto / municipio |
+| Feminicidio oficial | SESNSP, víctimas del fuero común (metodología 2015–2025) | Víctimas que las fiscalías clasificaron como feminicidio | Personas | Mensual | Estatal |
+| Muertes violentas de mujeres | INEGI, Estadísticas de Defunciones Registradas (EDR) | Mujeres muertas por presunto homicidio según el certificado de defunción | Personas | Anual | Estatal (municipal en CSV) |
+| Brecha | INEGI y SESNSP | % de mujeres asesinadas registradas como feminicidio | Porcentaje | Anual | Estatal |
+| Casos documentados (próximamente) | Memoria Viva de Feminicidios | Casos individuales clasificados con una rúbrica explícita | Personas | Continua | Punto / municipio |
 
 La diferencia entre la capa del INEGI y la del SESNSP es el universo de mujeres asesinadas que el Estado no registró como víctimas de feminicidio. La capa de casos documentados trata de explicar esa diferencia caso por caso, con evidencia que se puede rastrear.
 
@@ -28,9 +29,13 @@ web/       página del mapa
 
 ### Publicar el mapa con GitHub Actions (sin instalar nada)
 
-1. Ve a la página de datos abiertos de la EDR del INEGI (https://www.inegi.org.mx/programas/edr/#datos_abiertos), haz clic derecho en el `.zip` de cada año que quieras y elige *Copiar dirección del enlace*.
-2. En este repositorio, abre *Actions → Generar y publicar el mapa → Run workflow*, pega los enlaces separados por espacios y ejecútalo.
-3. Al terminar, el mapa queda publicado en GitHub Pages. Los datos procesados quedan disponibles en `datos/`, dentro del sitio.
+En *Actions → Generar y publicar el mapa → Run workflow*, deja los enlaces que vienen por defecto y ejecútalo. El flujo:
+
+1. Descarga la EDR del INEGI, las víctimas por estado del SESNSP (2015–2025, desde SharePoint) y la población del CONAPO.
+2. Calcula las tres capas por estado y año (`scripts/generar_mapa.py`).
+3. Publica `web/` en GitHub Pages. La página lee `web/datos/estados.json`.
+
+Controles que imprime el registro: el total de presuntos homicidios de cada archivo del INEGI (debe coincidir con la cifra oficial; para 2025 son 29,488) y la población de mujeres del CONAPO.
 
 ### Capa INEGI (EDR), en tu computadora
 
