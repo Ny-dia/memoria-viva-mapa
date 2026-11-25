@@ -37,11 +37,30 @@ import json
 import os
 import zipfile
 
+import unicodedata
+
 import pandas as pd
 
 COLUMNAS = [
     "sexo", "presunto", "tipo_defun", "causa_def", "anio_ocur", "anio_regis", "edad",
     "ent_ocurr", "mun_ocurr", "ent_ocules", "mun_ocules", "ent_resid", "mun_resid",
+    "lugar_ocur", "escolarida", "derechohab", "conindig", "lengua", "afromex", "nacionalid",
+]
+
+# variable -> nombre del catálogo dentro del .zip del INEGI (las etiquetas se leen de ahí)
+CATALOGOS = {
+    "lugar_ocur": "lugar_ocurrencia", "escolarida": "escolaridad", "derechohab": "derechohabiencia",
+    "conindig": "conind", "lengua": "lengua_indigena", "afromex": "afromexi", "nacionalid": "nacionalidad",
+}
+
+# indicadores que se cuentan por estado/municipio y año (cada uno es True/False por mujer)
+INDICADORES = [
+    "edad_0_17", "edad_18_29", "edad_30_44", "edad_45_mas",
+    "lugar_vivienda", "lugar_via_publica", "lugar_otro", "lugar_ignorado",
+    "medio_arma_fuego", "medio_arma_blanca", "medio_ahorcamiento", "medio_golpes", "medio_otro",
+    "esc_basica", "esc_media", "esc_superior", "esc_no_especificada",
+    "ss_sin", "ss_con", "ss_no_especificada",
+    "indigena", "lengua_indigena", "afromexicana", "extranjera",
 ]
 
 
@@ -93,14 +112,52 @@ def leer_archivo(ruta):
                 raise ValueError(f"No encontré el CSV con las columnas sexo/presunto dentro de {ruta}")
             print(f"  {os.path.basename(ruta)}: usando {nombre}")
             df = _leer_csv(io.BytesIO(z.read(nombre)))
+            cats = leer_catalogos(z)
     else:
         df = _leer_csv(ruta)
+        cats = {}
     df.columns = [c.strip().lower() for c in df.columns]
+    for var, cat in CATALOGOS.items():
+        if var in df.columns:
+            clave = df[var].fillna("").astype(str).str.strip().str.lstrip("0").replace("", "0")
+            df[var + "_etq"] = clave.map(cats.get(cat, {})).map(_norm)
+        else:
+            df[var + "_etq"] = pd.NA
     # en las bases recientes del INEGI la variable "presunto" se llama "tipo_defun"
     if "presunto" not in df.columns and "tipo_defun" in df.columns:
         df = df.rename(columns={"tipo_defun": "presunto"})
     df["archivo"] = os.path.basename(ruta)
     return df
+
+
+def _norm(t):
+    if t is None or (isinstance(t, float) and pd.isna(t)):
+        return pd.NA
+    return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()
+
+
+def leer_catalogos(z):
+    """{nombre_catalogo: {codigo: etiqueta}} a partir de los CSV de catálogos del zip del INEGI."""
+    cats = {}
+    for n in z.namelist():
+        base = os.path.basename(n).lower()
+        if not base.endswith(".csv") or "conjunto_de_datos" in base or "defunciones_registradas" in base:
+            continue
+        if z.getinfo(n).file_size > 5_000_000:
+            continue
+        df = None
+        for enc in ("utf-8", "latin-1"):
+            try:
+                df = pd.read_csv(io.BytesIO(z.read(n)), dtype=str, encoding=enc)
+                break
+            except Exception:
+                continue
+        if df is None or df.shape[1] < 2:
+            continue
+        cod, desc = df.columns[0], df.columns[1]
+        cats[base[:-4]] = dict(zip(df[cod].astype(str).str.strip().str.lstrip("0").replace("", "0"),
+                                   df[desc].astype(str).str.strip()))
+    return cats
 
 
 # ---------------------------------------------------------------- limpieza
@@ -173,10 +230,49 @@ def procesar(carpeta, lugar="ocurr"):
     edad = edad_en_anios(datos.get("edad", pd.Series(index=datos.index, dtype=str)))
     datos["menor_18"] = (edad < 18).fillna(False)
     datos["edad_no_esp"] = edad.isna()
+    indicadores(datos, edad)
     # año de ocurrencia desconocido (9999) se excluye de la serie, pero se reporta
     sin_anio = (~datos["anio"].between(1990, 2100)).sum()
     datos = datos[datos["anio"].between(1990, 2100)]
     return datos, sin_anio
+
+
+def indicadores(d, edad):
+    """Agrega a d una columna True/False por cada indicador de INDICADORES."""
+    f = lambda serie: serie.fillna(False).astype(bool)
+    d["edad_0_17"] = f(edad < 18)
+    d["edad_18_29"] = f(edad.between(18, 29))
+    d["edad_30_44"] = f(edad.between(30, 44))
+    d["edad_45_mas"] = f(edad >= 45)
+
+    lug = d["lugar_ocur_etq"].astype("string")
+    d["lugar_vivienda"] = f(lug.str.startswith("vivienda particular"))
+    d["lugar_via_publica"] = f(lug.str.contains("calle|carretera|via publica"))
+    d["lugar_ignorado"] = f(lug.str.contains("se ignora|no especificad")) | lug.isna()
+    d["lugar_otro"] = ~(d["lugar_vivienda"] | d["lugar_via_publica"] | d["lugar_ignorado"])
+
+    c = d.get("causa_def", pd.Series("", index=d.index)).fillna("").str.upper().str[:3]
+    d["medio_arma_fuego"] = c.isin(["X93", "X94", "X95"])
+    d["medio_arma_blanca"] = c.eq("X99")
+    d["medio_ahorcamiento"] = c.eq("X91")
+    d["medio_golpes"] = c.isin(["Y00", "Y04"])
+    d["medio_otro"] = ~(d["medio_arma_fuego"] | d["medio_arma_blanca"] | d["medio_ahorcamiento"] | d["medio_golpes"])
+
+    esc = d["escolarida_etq"].astype("string")
+    d["esc_superior"] = f(esc.str.contains("profesional|posgrado|licenciatura|maestria|doctorado"))
+    d["esc_media"] = f(esc.str.contains("bachillerato|preparatoria"))
+    d["esc_basica"] = f(esc.str.contains("sin escolaridad|preescolar|primaria|secundaria"))
+    d["esc_no_especificada"] = ~(d["esc_superior"] | d["esc_media"] | d["esc_basica"])
+
+    ss = d["derechohab_etq"].astype("string")
+    d["ss_sin"] = f(ss.eq("ninguna"))
+    d["ss_no_especificada"] = f(ss.str.contains("no especificad|se ignora")) | ss.isna()
+    d["ss_con"] = ~(d["ss_sin"] | d["ss_no_especificada"])
+
+    d["indigena"] = f(d["conindig_etq"].astype("string").eq("si"))
+    d["lengua_indigena"] = f(d["lengua_etq"].astype("string").eq("si"))
+    d["afromexicana"] = f(d["afromex_etq"].astype("string").eq("si"))
+    d["extranjera"] = f(d["nacionalid_etq"].astype("string").str.startswith("extranjer"))
 
 
 def agregar(datos, nivel):
@@ -186,7 +282,8 @@ def agregar(datos, nivel):
                  con_causa_x85_y09=("agresion_cie10", "sum"),
                  arma_fuego=("arma_fuego", "sum"),
                  menores_18=("menor_18", "sum"),
-                 edad_no_especificada=("edad_no_esp", "sum"))
+                 edad_no_especificada=("edad_no_esp", "sum"),
+                 **{k: (k, "sum") for k in INDICADORES})
             .reset_index()
             .sort_values([llave, "anio"]))
 

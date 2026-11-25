@@ -83,6 +83,24 @@ def sesnsp_feminicidio(ruta_zip):
     return out
 
 
+def sesnsp_homicidio_doloso_mujeres(ruta_zip):
+    """Mujeres víctimas de homicidio doloso por estado y año (para comparar con feminicidio)."""
+    df = _abrir_tabla(ruta_zip)
+    c_anio, c_ent = _col(df, "ano", "anio"), _col(df, "clave ent", "cve ent", "clave entidad")
+    c_sub, c_sexo = _col(df, "subtipo de delito"), _col(df, "sexo")
+    meses = [c for c in df.columns if _norm(c) in MESES]
+    f = df[(df[c_sub].map(_norm) == "homicidio doloso") & df[c_sexo].astype(str).map(_norm).str.startswith("muj")].copy()
+    f["v"] = f[meses].apply(pd.to_numeric, errors="coerce").fillna(0).sum(axis=1)
+    out = (f.groupby([c_ent, c_anio])["v"].sum().reset_index()
+             .rename(columns={c_ent: "cve_ent", c_anio: "anio", "v": "homicidio_doloso_mujeres_sesnsp"}))
+    out["cve_ent"] = pd.to_numeric(out["cve_ent"], errors="coerce").astype("Int64").astype(str).str.zfill(2)
+    out["anio"] = pd.to_numeric(out["anio"], errors="coerce").astype(int)
+    out["homicidio_doloso_mujeres_sesnsp"] = out["homicidio_doloso_mujeres_sesnsp"].astype(int)
+    print("  homicidio doloso de mujeres SESNSP (nacional):",
+          out.groupby("anio")["homicidio_doloso_mujeres_sesnsp"].sum().to_dict())
+    return out
+
+
 def conapo_mujeres(ruta_zip, anio_min=2010, anio_max=2030):
     """Población de mujeres a mitad de año por estado (CVE_GEO 1-32)."""
     import openpyxl

@@ -26,6 +26,14 @@
   .ficha h3 { font-size:15px; margin:0 0 8px; }
   .fila { display:flex; justify-content:space-between; gap:12px; padding:3px 0; }
   .fila span:first-child { color:var(--gris); }
+  .seccion { margin-top:14px; }
+  .seccion h4 { font-size:13.5px; margin:0 0 2px; }
+  .fuente { font-size:12px; color:var(--gris); margin:0 0 6px; }
+  .barra { margin-bottom:6px; }
+  .barra .fila { padding:1px 0; font-size:13px; }
+  .barra small { color:var(--gris); }
+  .pista { height:6px; background:#eceae4; border-radius:3px; overflow:hidden; }
+  .pista div { height:100%; background:#7f77dd; }
   .leyenda { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--gris); margin:8px 0 4px; flex-wrap:wrap; }
   .leyenda i { display:inline-block; width:28px; height:12px; }
   .nota { font-size:12.5px; color:var(--gris); border-top:1px solid var(--linea); margin-top:16px; padding-top:12px; }
@@ -119,22 +127,66 @@ function leyenda() {
     `<span style="width:100%">${unidad(capa)}</span><span>${fx(k[0])}</span>` +
     col.map(c => `<i style="background:${c}"></i>`).join("") + `<span>${fx(k[k.length - 1])}</span>`;
 }
+const pct = (n, t) => !t ? null : n / t * 100;
+function barras(titulo, fuente, filas, total) {
+  const h = filas.map(([et, n]) => {
+    const p = pct(n, total);
+    return `<div class="barra"><div class="fila"><span>${et}</span><span>${p == null ? "—" : fmt1(p) + " %"} <small>(${fmt(n)})</small></span></div>` +
+      `<div class="pista"><div style="width:${p == null ? 0 : Math.min(p, 100)}%"></div></div></div>`;
+  }).join("");
+  return `<div class="seccion"><h4>${titulo}</h4><p class="fuente">${fuente}</p>${h}</div>`;
+}
+function filasTexto(titulo, fuente, filas) {
+  return `<div class="seccion"><h4>${titulo}</h4>${fuente ? `<p class="fuente">${fuente}</p>` : ""}` +
+    filas.map(([a, b]) => `<div class="fila"><span>${a}</span><span>${b}</span></div>`).join("") + `</div>`;
+}
 function ficha(cve, nombre) {
   const d = datos(cve, anio);
   if (!d) { document.getElementById("ficha").innerHTML = `<h3>${nombre}</h3><p class="desc">Sin datos para ${anio}.</p>`; return; }
-  const filas = [
+  const t = d.inegi;
+  let h = `<h3>${nombre} · ${anio}</h3>`;
+  const resumen = [
     ["Mujeres asesinadas (INEGI)", fmt(d.inegi)],
     ["Feminicidios (SESNSP)", fmt(d.sesnsp)],
     ["No registradas como feminicidio", d.sesnsp == null ? "—" : fmt(Math.max(d.inegi - d.sesnsp, 0))],
-    ["% registrado como feminicidio", fmt1(valor(cve, anio, "brecha")) + (d.sesnsp == null ? "" : " %")],
+    ["% registrado como feminicidio", d.sesnsp == null ? "—" : fmt1(valor(cve, anio, "brecha")) + " %"],
   ];
   if (D.fuentes.conapo) {
-    filas.push(["Tasa INEGI por 100 mil mujeres", fmt1(tasa(d.inegi, d.mujeres))]);
-    filas.push(["Tasa SESNSP por 100 mil mujeres", fmt1(tasa(d.sesnsp, d.mujeres))]);
+    resumen.push(["Tasa INEGI por 100 mil mujeres", fmt1(tasa(d.inegi, d.mujeres))]);
+    resumen.push(["Tasa SESNSP por 100 mil mujeres", fmt1(tasa(d.sesnsp, d.mujeres))]);
   }
-  filas.push(["Con arma de fuego (INEGI)", fmt(d.arma_fuego)], ["Menores de 18 (INEGI)", fmt(d.menores_18)]);
-  document.getElementById("ficha").innerHTML = `<h3>${nombre} · ${anio}</h3>` +
-    filas.map(([a, b]) => `<div class="fila"><span>${a}</span><span>${b}</span></div>`).join("");
+  h += filasTexto("Resumen", "", resumen);
+  if (d.hom_doloso != null && d.sesnsp != null) {
+    const intencional = d.sesnsp + d.hom_doloso;
+    h += filasTexto("Dentro del propio SESNSP", "Mujeres víctimas de asesinato intencional según las fiscalías", [
+      ["Feminicidio", fmt(d.sesnsp)],
+      ["Homicidio doloso", fmt(d.hom_doloso)],
+      ["% clasificado como feminicidio", intencional ? fmt1(pct(d.sesnsp, intencional)) + " %" : "—"],
+    ]);
+  }
+  if (d.edad_0_17 != null) {
+    const fte = "INEGI · % de las mujeres asesinadas";
+    h += barras("Dónde ocurrió la lesión", fte, [
+      ["Calle o carretera", d.lugar_via_publica], ["Vivienda particular", d.lugar_vivienda],
+      ["Otro lugar", d.lugar_otro], ["Se ignora", d.lugar_ignorado]], t);
+    h += barras("Con qué", fte, [
+      ["Arma de fuego", d.medio_arma_fuego], ["Arma blanca", d.medio_arma_blanca],
+      ["Ahorcamiento o asfixia", d.medio_ahorcamiento], ["Golpes u objeto contundente", d.medio_golpes],
+      ["Otro o no especificado", d.medio_otro]], t);
+    h += barras("Edad", fte, [
+      ["Menores de 18", d.edad_0_17], ["18 a 29", d.edad_18_29], ["30 a 44", d.edad_30_44],
+      ["45 o más", d.edad_45_mas], ["No especificada", t - d.edad_0_17 - d.edad_18_29 - d.edad_30_44 - d.edad_45_mas]], t);
+    h += barras("Escolaridad", fte, [
+      ["Hasta secundaria", d.esc_basica], ["Bachillerato", d.esc_media],
+      ["Profesional o posgrado", d.esc_superior], ["No especificada", d.esc_no_especificada]], t);
+    h += barras("Seguridad social", fte, [
+      ["Sin seguridad social", d.ss_sin], ["Con seguridad social", d.ss_con],
+      ["No especificada", d.ss_no_especificada]], t);
+    h += barras("Interseccionalidad", fte + ". Pocos casos: leer con cuidado.", [
+      ["Se consideraba indígena", d.indigena], ["Hablaba lengua indígena", d.lengua_indigena],
+      ["Se consideraba afromexicana", d.afromexicana], ["Extranjera", d.extranjera]], t);
+  }
+  document.getElementById("ficha").innerHTML = h;
 }
 function avisos() {
   let h = "";

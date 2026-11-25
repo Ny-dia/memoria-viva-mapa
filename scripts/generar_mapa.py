@@ -51,6 +51,8 @@ def main():
         print("== SESNSP")
         fem = fc.sesnsp_feminicidio(a.sesnsp)
         tabla = tabla.merge(fem, on=["cve_ent", "anio"], how="left")
+        hom = fc.sesnsp_homicidio_doloso_mujeres(a.sesnsp)
+        tabla = tabla.merge(hom, on=["cve_ent", "anio"], how="left")
         fuentes["sesnsp"] = bool(tabla["feminicidios_sesnsp"].notna().any())
     if a.conapo:
         print("== CONAPO")
@@ -78,7 +80,9 @@ def main():
             "arma_fuego": int(r["arma_fuego"]),
             "menores_18": int(r["menores_18"]),
             "sesnsp": entero(r, "feminicidios_sesnsp"),
+            "hom_doloso": entero(r, "homicidio_doloso_mujeres_sesnsp"),
             "mujeres": entero(r, "mujeres_conapo"),
+            **{k: int(r[k]) for k in edr.INDICADORES},
         }
     salida = {"anios": anios, "anio_preliminar": max(anios), "fuentes": fuentes, "estados": estados}
     with open(os.path.join(out, "estados.json"), "w", encoding="utf-8") as f:
