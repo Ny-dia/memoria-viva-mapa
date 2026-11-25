@@ -45,12 +45,14 @@ COLUMNAS = [
     "sexo", "presunto", "tipo_defun", "causa_def", "anio_ocur", "anio_regis", "edad",
     "ent_ocurr", "mun_ocurr", "ent_ocules", "mun_ocules", "ent_resid", "mun_resid",
     "lugar_ocur", "escolarida", "derechohab", "conindig", "lengua", "afromex", "nacionalid",
+    "par_agre", "vio_fami",
 ]
 
 # variable -> nombre del catálogo dentro del .zip del INEGI (las etiquetas se leen de ahí)
 CATALOGOS = {
     "lugar_ocur": "lugar_ocurrencia", "escolarida": "escolaridad", "derechohab": "derechohabiencia",
     "conindig": "conind", "lengua": "lengua_indigena", "afromex": "afromexi", "nacionalid": "nacionalidad",
+    "par_agre": "parentesco_agresor", "vio_fami": "violencia_familiar",
 }
 
 # indicadores que se cuentan por estado/municipio y año (cada uno es True/False por mujer)
@@ -61,6 +63,7 @@ INDICADORES = [
     "esc_basica", "esc_media", "esc_superior", "esc_no_especificada",
     "ss_sin", "ss_con", "ss_no_especificada",
     "indigena", "lengua_indigena", "afromexicana", "extranjera",
+    "agresor_sin_dato", "vio_fami_sin_dato",
 ]
 
 
@@ -273,6 +276,12 @@ def indicadores(d, edad):
     d["lengua_indigena"] = f(d["lengua_etq"].astype("string").eq("si"))
     d["afromexicana"] = f(d["afromex_etq"].astype("string").eq("si"))
     d["extranjera"] = f(d["nacionalid_etq"].astype("string").str.startswith("extranjer"))
+
+    # "lo que el Estado no sabe": sin dato del agresor o de violencia familiar previa
+    ag = d["par_agre_etq"].astype("string")
+    d["agresor_sin_dato"] = f(ag.str.contains("no especificad|se ignora")) | ag.isna()
+    vf = d["vio_fami_etq"].astype("string")
+    d["vio_fami_sin_dato"] = f(vf.str.contains("no especificad|se ignora")) | vf.isna()
 
 
 def agregar(datos, nivel):

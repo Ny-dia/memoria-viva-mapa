@@ -84,7 +84,26 @@ def main():
             "mujeres": entero(r, "mujeres_conapo"),
             **{k: int(r[k]) for k in edr.INDICADORES},
         }
-    salida = {"anios": anios, "anio_preliminar": max(anios), "fuentes": fuentes, "estados": estados}
+
+    # años del SESNSP sin datos del INEGI (serie 2015-2025): solo SESNSP y población
+    anios_sesnsp = []
+    if fuentes["sesnsp"]:
+        serie = fem.merge(hom, on=["cve_ent", "anio"], how="outer")
+        if fuentes["conapo"]:
+            serie = serie.merge(pob, on=["cve_ent", "anio"], how="left")
+        serie = serie[serie["cve_ent"].isin([str(i).zfill(2) for i in range(1, 33)])]
+        anios_sesnsp = sorted(int(x) for x in serie["anio"].unique())
+        for _, r in serie.iterrows():
+            a_ = str(int(r["anio"]))
+            e = estados.setdefault(r["cve_ent"], {})
+            if a_ in e:
+                continue
+            e[a_] = {"inegi": None, "sesnsp": entero(r, "feminicidios_sesnsp"),
+                     "hom_doloso": entero(r, "homicidio_doloso_mujeres_sesnsp"),
+                     "mujeres": entero(r, "mujeres_conapo")}
+    salida = {"anios": sorted(set(anios) | set(anios_sesnsp)), "anios_inegi": anios,
+              "anios_sesnsp": anios_sesnsp, "anio_preliminar": max(anios),
+              "fuentes": fuentes, "estados": estados}
     with open(os.path.join(out, "estados.json"), "w", encoding="utf-8") as f:
         json.dump(salida, f, ensure_ascii=False)
 

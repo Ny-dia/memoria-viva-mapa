@@ -34,8 +34,14 @@
   .barra small { color:var(--gris); }
   .pista { height:6px; background:#eceae4; border-radius:3px; overflow:hidden; }
   .pista div { height:100%; background:#7f77dd; }
-  .leyenda { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--gris); margin:8px 0 4px; flex-wrap:wrap; }
-  .leyenda i { display:inline-block; width:28px; height:12px; }
+  .leyenda { font-size:12.5px; color:var(--gris); margin:10px 0 4px; background:#faf9f6; border:1px solid var(--linea); border-radius:8px; padding:10px 12px; }
+  .leyenda .lectura { color:var(--tinta); margin:0 0 8px; font-size:13px; }
+  .leyenda .clase { display:flex; align-items:center; gap:8px; padding:2px 0; }
+  .leyenda i { display:inline-block; width:22px; height:14px; border-radius:2px; flex:none; }
+  .leyenda .pie { margin:8px 0 0; font-size:12px; }
+  .tendencia svg { width:100%; height:auto; display:block; }
+  .clave { display:flex; gap:14px; font-size:12px; color:var(--gris); margin-top:4px; }
+  .clave span::before { content:""; display:inline-block; width:14px; height:3px; margin-right:5px; vertical-align:middle; background:var(--c); }
   .nota { font-size:12.5px; color:var(--gris); border-top:1px solid var(--linea); margin-top:16px; padding-top:12px; }
   .nota p { margin:0 0 8px; }
   .aviso { background:#faeeda; color:#633806; border-radius:8px; padding:8px 10px; font-size:12.5px; margin:10px 0; }
@@ -53,6 +59,7 @@
   <button class="capa" data-capa="sesnsp" aria-pressed="false">1 · Feminicidio oficial (SESNSP)</button>
   <button class="capa" data-capa="inegi" aria-pressed="true">2 · Mujeres asesinadas (INEGI)</button>
   <button class="capa" data-capa="brecha" aria-pressed="false">3 · Brecha</button>
+  <button class="capa" data-capa="nosabe" aria-pressed="false">4 · Lo que el Estado no sabe</button>
   <label style="margin-left:8px;font-size:14px;color:var(--gris)">Año
     <select id="anio" aria-label="Año"></select>
   </label>
@@ -69,6 +76,7 @@
     <div class="nota">
       <p><b>Fuentes.</b> INEGI, Estadísticas de Defunciones Registradas (mujeres por presunto homicidio, por estado y año de ocurrencia). SESNSP, víctimas de feminicidio del fuero común, metodología 2015–2025. CONAPO, población de mujeres a mitad de año.</p>
       <p><b>Cómo leer la brecha.</b> Es el porcentaje de mujeres asesinadas (INEGI) que el Estado registró como víctimas de feminicidio (SESNSP). No prueba que el resto hayan sido feminicidios: muestra cuántas muertes nunca se investigaron como tales.</p>
+      <p><b>Lo que el Estado no sabe.</b> Porcentaje de mujeres asesinadas cuyo certificado de defunción no registra el parentesco con el agresor. Sin ese dato no se puede reconocer un feminicidio íntimo.</p>
       <p><b>Cuidado al comparar.</b> El INEGI ubica cada caso por lugar y año de la muerte; el SESNSP, por la fiscalía y la fecha en que se abrió la carpeta. Las fuentes se comparan, no se suman.</p>
       <p><a href="datos/tres_capas_estado_anio.csv">Descargar los datos (CSV)</a> · <a href="https://github.com/Ny-dia/memoria-viva-mapa">Código y método</a></p>
     </div>
@@ -78,56 +86,78 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const CAPAS = {
-  sesnsp: { titulo: "Feminicidio oficial", rampa: ["#faece7","#f5c4b3","#f0997b","#d85a30","#712b13"],
-            desc: "Víctimas que las fiscalías clasificaron como feminicidio. Fuente: SESNSP." },
-  inegi:  { titulo: "Mujeres asesinadas", rampa: ["#fcebeb","#f7c1c1","#f09595","#e24b4a","#791f1f"],
-            desc: "Mujeres muertas por presunto homicidio según el certificado de defunción, antes de cualquier investigación. Fuente: INEGI." },
-  brecha: { titulo: "Brecha: ¿cuántas se registraron como feminicidio?", rampa: ["#eeedfe","#cecbf6","#afa9ec","#7f77dd","#3c3489"],
-            desc: "Porcentaje de mujeres asesinadas que quedó registrado como feminicidio. Más oscuro = menor registro." }
+  sesnsp: { titulo: "Feminicidio oficial", requiere: "sesnsp", rampa: ["#faece7","#f5c4b3","#f0997b","#d85a30","#712b13"],
+            desc: "Víctimas que las fiscalías clasificaron como feminicidio. Fuente: SESNSP, 2015–2025.",
+            lectura: "Más oscuro = más víctimas de feminicidio por cada 100 mil mujeres." },
+  inegi:  { titulo: "Mujeres asesinadas", requiere: "inegi", rampa: ["#fcebeb","#f7c1c1","#f09595","#e24b4a","#791f1f"],
+            desc: "Mujeres muertas por presunto homicidio según el certificado de defunción, antes de cualquier investigación. Fuente: INEGI.",
+            lectura: "Más oscuro = más mujeres asesinadas por cada 100 mil mujeres." },
+  brecha: { titulo: "Brecha: ¿cuántas se registraron como feminicidio?", requiere: "inegi", invertir: true,
+            rampa: ["#eeedfe","#cecbf6","#afa9ec","#7f77dd","#3c3489"],
+            desc: "Porcentaje de las mujeres asesinadas (INEGI) que quedó registrado como feminicidio (SESNSP).",
+            lectura: "Más oscuro = un porcentaje MENOR se registró como feminicidio, es decir, una brecha más grande." },
+  nosabe: { titulo: "Lo que el Estado no sabe", requiere: "inegi", rampa: ["#f1efe8","#d3d1c7","#b4b2a9","#888780","#444441"],
+            desc: "Porcentaje de mujeres asesinadas cuyo certificado de defunción no registra quién las mató (parentesco con el agresor). Fuente: INEGI.",
+            lectura: "Más oscuro = el Estado sabe menos sobre quién las mató." }
 };
 const fmt = n => n == null ? "—" : Math.round(n).toLocaleString("es-MX");
 const fmt1 = n => n == null || !isFinite(n) ? "—" : n.toLocaleString("es-MX", {maximumFractionDigits: 1, minimumFractionDigits: 1});
+const pct = (n, t) => !t || n == null ? null : n / t * 100;
 
-let D, geo, capa = "inegi", anio, capaGeo, fijo = null;
-const mapa = L.map("mapa", { zoomSnap: 0.25, attributionControl: true }).setView([23.8, -102], 5);
+let D, geo, capa = "inegi", anio, capaGeo, fijo = null, CORTES = {}, EXTREMOS = {};
+const mapa = L.map("mapa", { zoomSnap: 0.25 }).setView([23.8, -102], 5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   { attribution: "&copy; OpenStreetMap", opacity: 0.35, maxZoom: 9 }).addTo(mapa);
 
 function datos(cve, a) { return (D.estados[cve] || {})[a] || null; }
 function tasa(n, pob) { return n == null || !pob ? null : n / pob * 1e5; }
+function porTasa(c) { return (c === "inegi" || c === "sesnsp") && D.fuentes.conapo; }
 function valor(cve, a, c) {
   const d = datos(cve, a); if (!d) return null;
-  const porTasa = D.fuentes.conapo;
-  if (c === "inegi") return porTasa ? tasa(d.inegi, d.mujeres) : d.inegi;
-  if (c === "sesnsp") return porTasa ? tasa(d.sesnsp, d.mujeres) : d.sesnsp;
+  if (c === "sesnsp") return porTasa(c) ? tasa(d.sesnsp, d.mujeres) : d.sesnsp;
+  if (d.inegi == null) return null;
+  if (c === "inegi") return porTasa(c) ? tasa(d.inegi, d.mujeres) : d.inegi;
   if (c === "brecha") return d.sesnsp == null || !d.inegi ? null : d.sesnsp / d.inegi * 100;
+  if (c === "nosabe") return pct(d.agresor_sin_dato, d.inegi);
+}
+function disponible(c, a) {
+  if (CAPAS[c].requiere === "inegi") return D.anios_inegi.includes(+a);
+  return D.fuentes.sesnsp && (D.anios_sesnsp || []).includes(+a);
 }
 function cortes(c) {
   const v = [];
   for (const cve in D.estados) for (const a of D.anios) { const x = valor(cve, a, c); if (x != null) v.push(x); }
+  if (!v.length) return [];
   v.sort((x, y) => x - y);
-  return [0.2, 0.4, 0.6, 0.8].map(q => v[Math.floor(q * (v.length - 1))]);
+  EXTREMOS[c] = [v[0], v[v.length - 1]];
+  const k = [0.2, 0.4, 0.6, 0.8].map(q => v[Math.floor(q * (v.length - 1))]);
+  return k.filter((x, i) => (i === 0 || x > k[i - 1]) && x < v[v.length - 1]);
 }
-let CORTES = {};
-function color(c, x) {
-  if (x == null) return "#d3d1c7";
-  const k = CORTES[c]; let i = 0; while (i < k.length && x > k[i]) i++;
-  const r = CAPAS[c].rampa;
-  return c === "brecha" ? r[r.length - 1 - i] : r[i];
+function clase(c, x) { const k = CORTES[c]; let i = 0; while (i < k.length && x > k[i]) i++; return i; }
+function colores(c) {
+  const n = CORTES[c].length + 1, r = CAPAS[c].rampa;
+  const sel = n >= r.length ? r : r.slice(r.length - n);
+  return CAPAS[c].invertir ? [...sel].reverse() : sel;
 }
+function color(c, x) { return x == null ? "#e4e2dc" : colores(c)[clase(c, x)]; }
 function unidad(c) {
   if (c === "brecha") return "% registrado como feminicidio";
-  return D.fuentes.conapo ? "por 100 mil mujeres" : "casos";
+  if (c === "nosabe") return "% sin dato del agresor";
+  return D.fuentes.conapo ? "por cada 100 mil mujeres" : "casos";
 }
 function leyenda() {
-  const k = CORTES[capa], r = CAPAS[capa].rampa;
-  const fx = capa === "brecha" || D.fuentes.conapo ? fmt1 : fmt;
-  const col = capa === "brecha" ? [...r].reverse() : r;
-  document.getElementById("leyenda").innerHTML =
-    `<span style="width:100%">${unidad(capa)}</span><span>${fx(k[0])}</span>` +
-    col.map(c => `<i style="background:${c}"></i>`).join("") + `<span>${fx(k[k.length - 1])}</span>`;
+  const k = CORTES[capa], col = colores(capa);
+  const f = x => (capa === "brecha" || capa === "nosabe" || D.fuentes.conapo) ? fmt1(x) : fmt(x);
+  let h = `<p class="lectura"><b>Cómo leer el color.</b> ${CAPAS[capa].lectura}</p>`;
+  col.forEach((c, i) => {
+    const [mn, mx] = EXTREMOS[capa] || [null, null];
+    const rango = k.length === 0 ? (mn === mx ? f(mn) : `${f(mn)} a ${f(mx)}`) : i === 0 ? `hasta ${f(k[0])}` : i === col.length - 1 ? `más de ${f(k[k.length - 1])} (máx. ${f(mx)})` : `${f(k[i - 1])} a ${f(k[i])}`;
+    h += `<div class="clase"><i style="background:${c}"></i><span>${rango} ${unidad(capa)}</span></div>`;
+  });
+  h += `<div class="clase"><i style="background:#e4e2dc"></i><span>Sin dato para ese año</span></div>`;
+  h += `<p class="pie">Cada tono agrupa más o menos la misma cantidad de estados. Los rangos son iguales para todos los años, así que los colores se pueden comparar entre años.</p>`;
+  document.getElementById("leyenda").innerHTML = h;
 }
-const pct = (n, t) => !t ? null : n / t * 100;
 function barras(titulo, fuente, filas, total) {
   const h = filas.map(([et, n]) => {
     const p = pct(n, total);
@@ -140,32 +170,54 @@ function filasTexto(titulo, fuente, filas) {
   return `<div class="seccion"><h4>${titulo}</h4>${fuente ? `<p class="fuente">${fuente}</p>` : ""}` +
     filas.map(([a, b]) => `<div class="fila"><span>${a}</span><span>${b}</span></div>`).join("") + `</div>`;
 }
+function tendencia(cve) {
+  const as = D.anios_sesnsp || []; if (as.length < 2) return "";
+  const fem = as.map(a => (datos(cve, a) || {}).sesnsp), hd = as.map(a => (datos(cve, a) || {}).hom_doloso);
+  const max = Math.max(1, ...fem.filter(x => x != null), ...hd.filter(x => x != null));
+  const W = 280, H = 110, px = 6, py = 10;
+  const x = i => px + i * (W - 2 * px) / (as.length - 1), y = v => H - py - v / max * (H - 2 * py);
+  const linea = (vals, c) => `<polyline fill="none" stroke="${c}" stroke-width="2" points="${vals.map((v, i) => v == null ? "" : `${x(i)},${y(v)}`).join(" ")}"/>`;
+  const ia = as.indexOf(+anio);
+  const marca = ia >= 0 ? `<line x1="${x(ia)}" x2="${x(ia)}" y1="${py - 6}" y2="${H - py}" stroke="#888780" stroke-dasharray="3 3"/>` : "";
+  return `<div class="seccion tendencia"><h4>Tendencia ${as[0]}–${as[as.length - 1]}</h4><p class="fuente">SESNSP · víctimas por año (máximo: ${fmt(max)})</p>
+    <svg viewBox="0 0 ${W} ${H + 16}" role="img" aria-label="Víctimas de feminicidio y de homicidio doloso de mujeres por año">
+      ${marca}${linea(hd, "#b4b2a9")}${linea(fem, "#5b21b6")}
+      <text x="${px}" y="${H + 12}" font-size="10" fill="#5f5e5a">${as[0]}</text>
+      <text x="${W - px}" y="${H + 12}" font-size="10" fill="#5f5e5a" text-anchor="end">${as[as.length - 1]}</text>
+    </svg>
+    <div class="clave"><span style="--c:#5b21b6">Feminicidio</span><span style="--c:#b4b2a9">Homicidio doloso de mujeres</span></div></div>`;
+}
 function ficha(cve, nombre) {
   const d = datos(cve, anio);
   if (!d) { document.getElementById("ficha").innerHTML = `<h3>${nombre}</h3><p class="desc">Sin datos para ${anio}.</p>`; return; }
-  const t = d.inegi;
   let h = `<h3>${nombre} · ${anio}</h3>`;
-  const resumen = [
-    ["Mujeres asesinadas (INEGI)", fmt(d.inegi)],
-    ["Feminicidios (SESNSP)", fmt(d.sesnsp)],
-    ["No registradas como feminicidio", d.sesnsp == null ? "—" : fmt(Math.max(d.inegi - d.sesnsp, 0))],
-    ["% registrado como feminicidio", d.sesnsp == null ? "—" : fmt1(valor(cve, anio, "brecha")) + " %"],
-  ];
+  const resumen = [];
+  if (d.inegi != null) resumen.push(["Mujeres asesinadas (INEGI)", fmt(d.inegi)]);
+  resumen.push(["Feminicidios (SESNSP)", fmt(d.sesnsp)]);
+  if (d.inegi != null && d.sesnsp != null) {
+    resumen.push(["No registradas como feminicidio", fmt(Math.max(d.inegi - d.sesnsp, 0))]);
+    resumen.push(["% registrado como feminicidio", fmt1(valor(cve, anio, "brecha")) + " %"]);
+  }
   if (D.fuentes.conapo) {
-    resumen.push(["Tasa INEGI por 100 mil mujeres", fmt1(tasa(d.inegi, d.mujeres))]);
+    if (d.inegi != null) resumen.push(["Tasa INEGI por 100 mil mujeres", fmt1(tasa(d.inegi, d.mujeres))]);
     resumen.push(["Tasa SESNSP por 100 mil mujeres", fmt1(tasa(d.sesnsp, d.mujeres))]);
   }
   h += filasTexto("Resumen", "", resumen);
   if (d.hom_doloso != null && d.sesnsp != null) {
     const intencional = d.sesnsp + d.hom_doloso;
     h += filasTexto("Dentro del propio SESNSP", "Mujeres víctimas de asesinato intencional según las fiscalías", [
-      ["Feminicidio", fmt(d.sesnsp)],
-      ["Homicidio doloso", fmt(d.hom_doloso)],
-      ["% clasificado como feminicidio", intencional ? fmt1(pct(d.sesnsp, intencional)) + " %" : "—"],
-    ]);
+      ["Feminicidio", fmt(d.sesnsp)], ["Homicidio doloso", fmt(d.hom_doloso)],
+      ["% clasificado como feminicidio", intencional ? fmt1(pct(d.sesnsp, intencional)) + " %" : "—"]]);
   }
-  if (d.edad_0_17 != null) {
-    const fte = "INEGI · % de las mujeres asesinadas";
+  h += tendencia(cve);
+  if (d.inegi == null) {
+    h += `<p class="desc" style="margin-top:12px">Para ${anio} no hay datos del INEGI cargados en el mapa (cubren ${D.anios_inegi.join(", ")}).</p>`;
+  } else if (d.edad_0_17 != null) {
+    const t = d.inegi, fte = "INEGI · % de las mujeres asesinadas";
+    if (d.agresor_sin_dato != null) h += barras("Lo que el Estado no registra", fte, [
+      ["Sin dato de quién las mató", d.agresor_sin_dato], ["Sin dato de violencia familiar previa", d.vio_fami_sin_dato],
+      ["Lugar de la lesión: se ignora", d.lugar_ignorado], ["Seguridad social: no especificada", d.ss_no_especificada],
+      ["Escolaridad: no especificada", d.esc_no_especificada]], t);
     h += barras("Dónde ocurrió la lesión", fte, [
       ["Calle o carretera", d.lugar_via_publica], ["Vivienda particular", d.lugar_vivienda],
       ["Otro lugar", d.lugar_otro], ["Se ignora", d.lugar_ignorado]], t);
@@ -180,8 +232,7 @@ function ficha(cve, nombre) {
       ["Hasta secundaria", d.esc_basica], ["Bachillerato", d.esc_media],
       ["Profesional o posgrado", d.esc_superior], ["No especificada", d.esc_no_especificada]], t);
     h += barras("Seguridad social", fte, [
-      ["Sin seguridad social", d.ss_sin], ["Con seguridad social", d.ss_con],
-      ["No especificada", d.ss_no_especificada]], t);
+      ["Sin seguridad social", d.ss_sin], ["Con seguridad social", d.ss_con], ["No especificada", d.ss_no_especificada]], t);
     h += barras("Interseccionalidad", fte + ". Pocos casos: leer con cuidado.", [
       ["Se consideraba indígena", d.indigena], ["Hablaba lengua indígena", d.lengua_indigena],
       ["Se consideraba afromexicana", d.afromexicana], ["Extranjera", d.extranjera]], t);
@@ -190,30 +241,29 @@ function ficha(cve, nombre) {
 }
 function avisos() {
   let h = "";
-  if (anio == D.anio_preliminar) h += `<div class="aviso">${anio}: las cifras del INEGI aún están incompletas, porque algunas muertes de ese año se registran después. La brecha puede verse más chica de lo que es.</div>`;
-  if (!D.fuentes.sesnsp && capa !== "inegi") h += `<div class="aviso">Falta cargar los datos del SESNSP.</div>`;
-  if (D.anios_sin_sesnsp && D.anios_sin_sesnsp.includes(+anio) && capa !== "inegi") h += `<div class="aviso">No hay datos del SESNSP comparables para ${anio}.</div>`;
+  if (anio == D.anio_preliminar && CAPAS[capa].requiere === "inegi") h += `<div class="aviso">${anio}: las cifras del INEGI aún están incompletas, porque algunas muertes de ese año se registran después.</div>`;
+  if (!D.anios_inegi.includes(+anio)) h += `<div class="aviso">Para ${anio} solo hay datos del SESNSP. Las capas del INEGI (2, 3 y 4) cubren ${D.anios_inegi.join(", ")}.</div>`;
   document.getElementById("aviso").innerHTML = h;
 }
 function pintar() {
+  document.querySelectorAll(".capa").forEach(b => b.disabled = !disponible(b.dataset.capa, anio));
+  if (!disponible(capa, anio)) capa = "sesnsp";
   document.getElementById("titulo-capa").textContent = CAPAS[capa].titulo;
   document.getElementById("desc-capa").textContent = CAPAS[capa].desc;
   document.querySelectorAll(".capa").forEach(b => b.setAttribute("aria-pressed", b.dataset.capa === capa));
-  capaGeo.setStyle(f => ({ fillColor: color(capa, valor(f.properties.cve, anio, capa)),
-                           fillOpacity: .9, color: "#fff", weight: 1 }));
+  capaGeo.setStyle(f => ({ fillColor: color(capa, valor(f.properties.cve, anio, capa)), fillOpacity: .9, color: "#fff", weight: 1 }));
   leyenda(); avisos();
   if (fijo) ficha(fijo.cve, fijo.nombre);
 }
 Promise.all([fetch("datos/estados.json").then(r => r.json()), fetch("datos/estados.geojson").then(r => r.json())])
 .then(([d, g]) => {
   D = d; geo = g;
-  D.anios_sin_sesnsp = D.anios.filter(a => !Object.values(D.estados).some(e => e[a] && e[a].sesnsp != null));
+  D.anios_inegi = D.anios_inegi || D.anios;
   for (const c in CAPAS) CORTES[c] = cortes(c);
-  if (!D.fuentes.sesnsp) document.querySelectorAll('.capa[data-capa="sesnsp"], .capa[data-capa="brecha"]').forEach(b => b.disabled = true);
   const sel = document.getElementById("anio");
-  sel.innerHTML = D.anios.map(a => `<option value="${a}">${a}${a == D.anio_preliminar ? " (preliminar)" : ""}</option>`).join("");
-  const completos = D.anios.filter(a => a != D.anio_preliminar && !D.anios_sin_sesnsp.includes(a));
-  anio = String(completos.length ? completos[completos.length - 1] : D.anios[D.anios.length - 1]);
+  sel.innerHTML = [...D.anios].reverse().map(a => `<option value="${a}">${a}${a == D.anio_preliminar ? " (preliminar)" : ""}${D.anios_inegi.includes(a) ? "" : " · solo SESNSP"}</option>`).join("");
+  const completos = D.anios_inegi.filter(a => a != D.anio_preliminar);
+  anio = String(completos.length ? completos[completos.length - 1] : D.anios_inegi[D.anios_inegi.length - 1]);
   sel.value = anio;
   sel.onchange = () => { anio = sel.value; pintar(); };
   document.querySelectorAll(".capa").forEach(b => b.onclick = () => { capa = b.dataset.capa; pintar(); });

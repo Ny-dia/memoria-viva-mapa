@@ -11,6 +11,7 @@ Proyecto de investigación independiente de Nydia Mejía Zavala.
 | Feminicidio oficial | SESNSP, víctimas del fuero común (metodología 2015–2025) | Víctimas que las fiscalías clasificaron como feminicidio | Personas | Mensual | Estatal |
 | Muertes violentas de mujeres | INEGI, Estadísticas de Defunciones Registradas (EDR) | Mujeres muertas por presunto homicidio según el certificado de defunción | Personas | Anual | Estatal (municipal en CSV) |
 | Brecha | INEGI y SESNSP | % de mujeres asesinadas registradas como feminicidio | Porcentaje | Anual | Estatal |
+| Lo que el Estado no sabe | INEGI | % de mujeres asesinadas sin registro del parentesco con el agresor | Porcentaje | Anual | Estatal |
 | Casos documentados (próximamente) | Memoria Viva de Feminicidios | Casos individuales clasificados con una rúbrica explícita | Personas | Continua | Punto / municipio |
 
 La diferencia entre la capa del INEGI y la del SESNSP es el universo de mujeres asesinadas que el Estado no registró como víctimas de feminicidio. La capa de casos documentados trata de explicar esa diferencia caso por caso, con evidencia que se puede rastrear.
