@@ -74,9 +74,14 @@ def leer_catalogos(z):
         if z.getinfo(n).file_size > 5_000_000:
             continue
         nombre = re.sub(r"\.csv$", "", base)
-        try:
-            df = pd.read_csv(io.BytesIO(z.read(n)), dtype=str, encoding="latin-1")
-        except Exception:
+        df = None
+        for enc in ("utf-8", "latin-1"):
+            try:
+                df = pd.read_csv(io.BytesIO(z.read(n)), dtype=str, encoding=enc)
+                break
+            except Exception:
+                continue
+        if df is None:
             continue
         if df.shape[1] < 2:
             continue
@@ -87,6 +92,12 @@ def leer_catalogos(z):
 
 
 def catalogo_para(var, cats):
+    exactos = {"vio_fami": "violencia_familiar", "embarazo": "condicion_embarazo",
+               "rel_emba": "relacion_con_embarazo", "conindig": "conind", "edo_civil": "estado_civil",
+               "cond_act": "condicion_actividad", "asist_medi": "asistencia_medica",
+               "afromex": "afromexi", "lengua": "lengua_indigena", "area_ur": "area_urbana_rural"}
+    if exactos.get(var) in cats:
+        return exactos[var], cats[exactos[var]]
     claves = {var, var.replace("_", ""), {"escolarida": "escolaridad", "ocupacion": "ocupaciones",
                                          "lugar_ocur": "lugar_ocurrencia", "par_agre": "parentesco",
                                          "nacionalid": "nacionalidad", "derechohab": "derechohabiencia"}.get(var, var)}
