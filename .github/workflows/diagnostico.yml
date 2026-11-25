@@ -1,0 +1,45 @@
+name: Diagnóstico de calidad de datos
+
+# Mide qué tan completas vienen las variables de cada mujer asesinada (INEGI) y describe
+# las víctimas de feminicidio del SESNSP. El reporte aparece en el resumen de la ejecución
+# y como archivo descargable ("diagnostico").
+on:
+  workflow_dispatch:
+    inputs:
+      urls_edr:
+        description: "INEGI, EDR: enlaces de los .zip por año"
+        required: true
+        default: "https://www.inegi.org.mx/contenidos/programas/edr/datosabiertos/defunciones/2023/conjunto_de_datos_defunciones_registradas_2023_csv.zip https://www.inegi.org.mx/contenidos/programas/edr/datosabiertos/defunciones/2024/conjunto_de_datos_edr2024_csv.zip https://www.inegi.org.mx/contenidos/programas/edr/datosabiertos/conjunto_de_datos_edr2025_csv.zip"
+      url_sesnsp:
+        description: "SESNSP: víctimas del fuero común estatal 2015-2025"
+        required: true
+        default: "https://sspcgob-my.sharepoint.com/:u:/g/personal/cni_sspc_gob_mx/IQC7gjMDceDhTovbaLjJhCsPATp0-Oa3jyDBxpZ8qZm7Nkw?e=cNhRp0"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pandas openpyxl requests tabulate
+      - name: Descargar datos
+        env:
+          URLS_EDR: ${{ inputs.urls_edr }}
+          URL_SESNSP: ${{ inputs.url_sesnsp }}
+        run: |
+          python scripts/descargar.py datos_edr "$URLS_EDR"
+          python scripts/descargar.py datos_sesnsp "$URL_SESNSP"
+      - name: Diagnóstico
+        run: |
+          python scripts/diagnostico_calidad.py --edr datos_edr \
+            --sesnsp "$(ls datos_sesnsp/*.zip | head -1)" --salida diagnostico
+          cat diagnostico/reporte.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diagnostico
+          path: diagnostico
