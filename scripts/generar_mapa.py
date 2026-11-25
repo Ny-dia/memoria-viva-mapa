@@ -91,6 +91,15 @@ def main():
     cols = [c for c in ["homicidios_mujeres", "feminicidios_sesnsp", "mujeres_conapo"] if c in tabla]
     print("\nResumen nacional:")
     print(tabla.groupby("anio")[cols].sum().to_string())
+    ref = max([x for x in anios if x != max(anios)] or anios)
+    t = tabla[tabla["anio"] == ref]
+    total = t["homicidios_mujeres"].sum()
+    print(f"\nControl de categorías, {ref} (% nacional de mujeres asesinadas):")
+    for k in edr.INDICADORES:
+        print(f"  {k:22s} {t[k].sum() / total * 100:5.1f} %")
+    if "homicidio_doloso_mujeres_sesnsp" in t:
+        f_, h_ = t["feminicidios_sesnsp"].sum(), t["homicidio_doloso_mujeres_sesnsp"].sum()
+        print(f"  feminicidio / (feminicidio + homicidio doloso), SESNSP: {f_ / (f_ + h_) * 100:.1f} %")
     print(f"\nListo: {out}/estados.json  (fuentes: {fuentes})")
 
 
