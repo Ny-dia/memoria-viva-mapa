@@ -119,6 +119,10 @@ def main():
     if "homicidio_doloso_mujeres_sesnsp" in t:
         f_, h_ = t["feminicidios_sesnsp"].sum(), t["homicidio_doloso_mujeres_sesnsp"].sum()
         print(f"  feminicidio / (feminicidio + homicidio doloso), SESNSP: {f_ / (f_ + h_) * 100:.1f} %")
+    nombres = {ft["properties"]["cve"]: ft["properties"]["nombre"] for ft in geo["features"]}
+    print(f"\nAgresor registrado por estado, {ref} (% de mujeres asesinadas con parentesco del agresor):")
+    for _, r in t.assign(p=(1 - t["agresor_sin_dato"] / t["homicidios_mujeres"]) * 100).sort_values("p", ascending=False).iterrows():
+        print(f"  {nombres.get(r['cve_ent'], r['cve_ent']):22s} {r['p']:5.1f} %  ({int(r['homicidios_mujeres'] - r['agresor_sin_dato'])} de {int(r['homicidios_mujeres'])})")
     print(f"\nListo: {out}/estados.json  (fuentes: {fuentes})")
 
 
